@@ -7,6 +7,7 @@ langchain-core
 langchain-text-splitters
 langchain-google-genai
 langchain-huggingface
+rank_bm25
 
 faiss-cpu
 sentence-transformers

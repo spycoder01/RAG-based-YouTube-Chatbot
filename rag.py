@@ -5,6 +5,8 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
 from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.runnables import (
@@ -80,9 +82,23 @@ def get_answer(youtube_url, question):
         embeddings
     )
 
-    retriever = vector_store.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k":4}
+    faiss_retriever = vector_store.as_retriever(
+    search_kwargs={"k": 4}
+    )
+
+    # BM25
+    bm25_retriever = BM25Retriever.from_documents(
+        chunks,
+        k=4
+    )
+
+    # Hybrid Retriever
+    retriever = EnsembleRetriever(
+        retrievers=[
+            faiss_retriever,
+            bm25_retriever
+        ],
+        weights=[0.6, 0.4]
     )
 
     # Prompt
