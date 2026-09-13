@@ -7,6 +7,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
+from sentence_transformers import CrossEncoder
 from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.runnables import (
@@ -83,13 +84,13 @@ def get_answer(youtube_url, question):
     )
 
     faiss_retriever = vector_store.as_retriever(
-    search_kwargs={"k": 4}
+        search_kwargs={"k": 15}
     )
 
     # BM25
     bm25_retriever = BM25Retriever.from_documents(
         chunks,
-        k=4
+        k=15
     )
 
     # Hybrid Retriever
@@ -100,6 +101,27 @@ def get_answer(youtube_url, question):
         ],
         weights=[0.6, 0.4]
     )
+
+    reranker = CrossEncoder(
+        "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    )
+
+    def rerank_documents(query, documents, top_k=4):
+        
+        pairs = [
+            (query, doc.page_content)
+            for doc in documents
+        ]
+
+        scores = reranker.predict(pairs)
+
+        ranked_docs = sorted(
+            zip(scores, documents),
+            key=lambda x: x[0],
+            reverse=True
+        )
+
+        return [doc for _, doc in ranked_docs[:top_k]]
 
     # Prompt
     prompt = PromptTemplate(
@@ -134,7 +156,10 @@ Question:
     chain1 = (
         RunnableParallel(
             {
-                "context": retriever | RunnableLambda(format_docs),
+                "context": (retriever | 
+                            RunnableLambda(lambda docs: rerank_documents(question, docs, top_k=4)) | 
+                            RunnableLambda(format_docs)
+                            ),
                 "question": RunnablePassthrough(),
             }
         )
